@@ -2,7 +2,7 @@ package routes
 
 import (
 	controller "example.com/m/v2/controllers"
-	"example.com/m/v2/middleware"
+	middleware "example.com/m/v2/middleware"
 	"github.com/gin-gonic/gin"
 )
 
