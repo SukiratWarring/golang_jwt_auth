@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -30,6 +31,7 @@ func SignUp() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
 		var user models.User
+		// parse the JSON payload of the request body and bind it to a Go struct
 		if err := c.BindJSON(&user); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -54,27 +56,45 @@ func SignUp() gin.HandlerFunc {
 		user.Updated_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 		user.ID = primitive.NewObjectID()
 		user.User_id = user.ID.Hex()
-
 		token, refreshToken, _ := helper.GenerateAllTokens(*user.Email, *user.First_name, *user.Last_name, *user.User_type, *&user.User_id)
 		user.Token = &token
 		user.Refresh_token = &refreshToken
 
-		userCollection.InsertOne(ctx, user)
+		instertionNumber, err := userCollection.InsertOne(ctx, user)
+		if (err) != nil {
+			msg := fmt.Sprintf("Error while inserting user")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+		}
+		defer cancel()
+		c.JSON(http.StatusOK, instertionNumber)
 
 	}
 
 }
 func Login() gin.HandlerFunc {
-	return func(ctx *gin.Context) {}
+	return func(c *gin.Context) {
+		// creating a new context with a timeout using the context package in Go.
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+		var user models.User
+		var founduser models.User
+		if err := c.BindJSON(&user); err != nil {
+			msg := fmt.Sprintf("Error while inserting user")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+		}
+		userCollection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&founduser)
+
+	}
 }
 func GetUsers() gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 	}
 }
+
 func GetUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userId := c.Params("user_id")
+		userId := c.Param("user_id")
 
 		if err := helper.MatchUserTypeToUid(c, userId); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
