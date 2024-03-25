@@ -15,22 +15,36 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var userCollection *mongo.Collection = database.OpenColletion(database.Client, "user")
 var validate = validator.New()
 
-func HashPassword() {
+func HashPassword(password string) string {
+	byte, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	if err != nil {
+		log.Panic(err)
+	}
+	return string(byte)
 
 }
-func VerifyPassword() {
-
+func VerifyPassword(userPass string, providePass string) (bool, string) {
+	isValid := true
+	msg := ""
+	err := bcrypt.CompareHashAndPassword([]byte(userPass), []byte(providePass))
+	if err != nil {
+		isValid = false
+		msg = fmt.Sprintf("Email or password is incorrect.")
+	}
+	return isValid, msg
 }
 
 func SignUp() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
 		var user models.User
+
 		// parse the JSON payload of the request body and bind it to a Go struct
 		if err := c.BindJSON(&user); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -41,12 +55,14 @@ func SignUp() gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
 			return
 		}
-
+		fmt.Println("Signing up: ")
 		count, err := userCollection.CountDocuments(ctx, bson.M{"email": user.Email})
+		password := HashPassword(user.Password)
+		user.Password = password
 		defer cancel()
 		if err != nil {
 			log.Panic(err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "error occured whil checking for the user"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error occured while checking for the user"})
 		}
 		if count > 0 {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "this email or phone number already exists"})
@@ -75,14 +91,25 @@ func Login() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// creating a new context with a timeout using the context package in Go.
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
-		defer cancel()
 		var user models.User
 		var founduser models.User
 		if err := c.BindJSON(&user); err != nil {
-			msg := fmt.Sprintf("Error while inserting user")
-			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
-		userCollection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&founduser)
+		err := userCollection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&founduser)
+		if err != nil {
+			msg := fmt.Sprintf("Error while finding user")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+			return
+		}
+		value, msg := VerifyPassword(user.Password, founduser.Password)
+		if value == false {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+			return
+		}
+		helper.GenerateAllTokens(*founduser.Email, *founduser.First_name, *founduser.Last_name, *founduser.User_type, *&founduser.User_id)
+		defer cancel()
 
 	}
 }
