@@ -55,3 +55,5 @@ func GenerateAllTokens(email string, firstName string, lastName string, userType
 	return token, refreshToken, err
 
 }
+func UpdateAllTokens(token string, refreshToken string, foundUserId string) {
+}
